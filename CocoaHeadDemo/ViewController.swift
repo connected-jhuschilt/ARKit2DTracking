@@ -24,110 +24,128 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        // Set the view's delegate
+        setupSceneView()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        configureAndRunARSession()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        pauseARSession()
+    }
+    
+    
+    // MARK: - Additional Setup
+    
+    func setupSceneView() {
         sceneView.delegate = self
-        
-        // Set the session's delegate
         sceneView.session.delegate = self
         
         // Show statistics such as fps and timing information
         sceneView.showsStatistics = true
     }
     
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        
-        // Create a session configuration
-        let configuration = ARWorldTrackingConfiguration()
-        
-        // Enable horizontal plane detection
-        configuration.planeDetection = .horizontal
-        
-        // Run the view's session
-        sceneView.session.run(configuration)
+    func configureAndRunARSession() {
+        // test if device is capable of running AR
+        if ARWorldTrackingConfiguration.isSupported {
+            let configuration = ARWorldTrackingConfiguration()
+            
+            configuration.planeDetection = .horizontal
+            configuration.worldAlignment = .gravity
+            
+            sceneView.session.run(configuration)
+        } else {
+            let alertVC = UIAlertController(title: "AR Not Supported", message: "This requires an iPhone 6s or newer, or an iPad Pro.", preferredStyle: .alert)
+            alertVC.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+            
+            present(alertVC, animated: true, completion: nil)
+        }
     }
     
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        
-        // Pause the view's session
+    func pauseARSession() {
         sceneView.session.pause()
     }
     
-    // MARK: - ARSessionDelegate
     
-    public func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        
+    // MARK: - Vision
+    
+    func resctangleDetector(frame: ARFrame) {
         // Only run one Vision request at a time
-        if self.processing {
-            return
-        }
-        
-        self.processing = true
-        
-        // Create a Rectangle Detection Request
-        let request = VNDetectRectanglesRequest { (request, error) in
-            guard let observations = request.results as? [VNRectangleObservation] else {
-                print("Unexpected Observation type")
-                return
-            }
-            if let rectangle = observations.first {
-                var rect = rectangle.boundingBox
-                
-                // Flip coordinates
-                rect = rect.applying(CGAffineTransform(scaleX: 1, y: -1))
-                rect = rect.applying(CGAffineTransform(translationX: 0, y: 1))
-                
-                let center = CGPoint(x: rect.midX, y: rect.midY)
-                
-                DispatchQueue.main.async {
-                    // Perform a hit test on the ARFrame to find a surface
-                    let hitTestResults = frame.hitTest(center, types: [ARHitTestResult.ResultType.existingPlane])  //featurePoint
+        if !self.processing {
+            
+            self.processing = true
+            
+            // Create a Rectangle Detection Request
+            let request = VNDetectRectanglesRequest { (request, error) in
+                guard let observations = request.results as? [VNRectangleObservation] else {
+                    print("Unexpected Observation type")
+                    return
+                }
+                if let rectangle = observations.first {
+                    var rect = rectangle.boundingBox
                     
-                    // If we have a result, process it
-                    if let hitTestResult = hitTestResults.first {
+                    // Flip coordinates
+                    rect = rect.applying(CGAffineTransform(scaleX: 1, y: -1))
+                    rect = rect.applying(CGAffineTransform(translationX: 0, y: 1))
+                    
+                    let center = CGPoint(x: rect.midX, y: rect.midY)
+                    
+                    DispatchQueue.main.async {
+                        // Perform a hit test on the ARFrame to find a surface
+                        let hitTestResults = frame.hitTest(center, types: [ARHitTestResult.ResultType.existingPlane])  //featurePoint
                         
-                        // If we already have an anchor, update the position of the attached node
-                        if let detectedDataAnchor = self.detectedDataAnchor,
-                            let node = self.sceneView.node(for: detectedDataAnchor) {
+                        // If we have a result, process it
+                        if let hitTestResult = hitTestResults.first {
                             
-                            node.transform = SCNMatrix4(hitTestResult.worldTransform)
-                            
-                        } else {
-                            // Create an anchor. The node will be created in delegate methods
-                            self.detectedDataAnchor = ARAnchor(transform: hitTestResult.worldTransform)
-                            self.sceneView.session.add(anchor: self.detectedDataAnchor!)
+                            // If we already have an anchor, update the position of the attached node
+                            if let detectedDataAnchor = self.detectedDataAnchor,
+                                let node = self.sceneView.node(for: detectedDataAnchor) {
+                                
+                                node.transform = SCNMatrix4(hitTestResult.worldTransform)
+                            } else {
+                                // Create an anchor. The node will be created in delegate methods
+                                self.detectedDataAnchor = ARAnchor(transform: hitTestResult.worldTransform)
+                                self.sceneView.session.add(anchor: self.detectedDataAnchor!)
+                            }
                         }
+                        
+                        self.processing = false
                     }
-                    
-                    // Set processing flag off
+                } else {
                     self.processing = false
                 }
-                
-            } else {
-                // Set processing flag off
-                self.processing = false
             }
-        }
-        
-        // Process the request in the background
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                // Create a request handler using the captured image from the ARFrame
-                let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage,
-                                                                options: [:])
-                // Process the request
-                try imageRequestHandler.perform([request])
-            } catch {
-                print("Error")
+            
+            // Process the request in the background
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    // Create a request handler using the captured image from the ARFrame
+                    let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage,
+                                                                    options: [:])
+                    // Process the request
+                    try imageRequestHandler.perform([request])
+                } catch {
+                    print("Error")
+                }
             }
         }
     }
     
+    
+    // MARK: - ARSessionDelegate
+    
     func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
+        // TODO: Notify the user through an indicator if the tracking state is limited
         print("cameraDidChangeTrackingState: \(camera.trackingState)")
     }
+    
+    public func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        resctangleDetector(frame: frame)
+    }
+    
     
     // MARK: - ARSCNViewDelegate
     
@@ -158,4 +176,3 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         return nil
     }
 }
-
