@@ -39,7 +39,7 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         super.viewWillAppear(animated)
         
         // Create a session configuration
-        let configuration = ARWorldTrackingSessionConfiguration()
+        let configuration = ARWorldTrackingConfiguration()
         
         // Enable horizontal plane detection
         configuration.planeDetection = .horizontal
@@ -66,27 +66,24 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         
         self.processing = true
         
-        // Create a Barcode Detection Request
-        let request = VNDetectBarcodesRequest { (request, error) in
-            
-            // Get the first result out of the results, if there are any
-            if let results = request.results, let result = results.first as? VNBarcodeObservation {
-                
-                // Get the bounding box for the bar code and find the center
-                var rect = result.boundingBox
+        // Create a Rectangle Detection Request
+        let request = VNDetectRectanglesRequest { (request, error) in
+            guard let observations = request.results as? [VNRectangleObservation] else {
+                print("Unexpected Observation type")
+                return
+            }
+            if let rectangle = observations.first {
+                var rect = rectangle.boundingBox
                 
                 // Flip coordinates
                 rect = rect.applying(CGAffineTransform(scaleX: 1, y: -1))
                 rect = rect.applying(CGAffineTransform(translationX: 0, y: 1))
                 
-                // Get center
                 let center = CGPoint(x: rect.midX, y: rect.midY)
                 
-                // Go back to the main thread
                 DispatchQueue.main.async {
-                    
                     // Perform a hit test on the ARFrame to find a surface
-                    let hitTestResults = frame.hitTest(center, types: [.featurePoint/*, .estimatedHorizontalPlane, .existingPlane, .existingPlaneUsingExtent*/] )
+                    let hitTestResults = frame.hitTest(center, types: [ARHitTestResult.ResultType.existingPlane])  //featurePoint
                     
                     // If we have a result, process it
                     if let hitTestResult = hitTestResults.first {
@@ -94,8 +91,8 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
                         // If we already have an anchor, update the position of the attached node
                         if let detectedDataAnchor = self.detectedDataAnchor,
                             let node = self.sceneView.node(for: detectedDataAnchor) {
-                                
-                                node.transform = SCNMatrix4(hitTestResult.worldTransform)
+                            
+                            node.transform = SCNMatrix4(hitTestResult.worldTransform)
                             
                         } else {
                             // Create an anchor. The node will be created in delegate methods
@@ -117,18 +114,19 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         // Process the request in the background
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                // Set it to recognize QR code only
-                request.symbologies = [.QR]
-                
                 // Create a request handler using the captured image from the ARFrame
                 let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage,
                                                                 options: [:])
                 // Process the request
                 try imageRequestHandler.perform([request])
             } catch {
-                
+                print("Error")
             }
         }
+    }
+    
+    func session(_ session: ARSession, cameraDidChangeTrackingState camera: ARCamera) {
+        print("cameraDidChangeTrackingState: \(camera.trackingState)")
     }
     
     // MARK: - ARSCNViewDelegate
@@ -160,3 +158,4 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
         return nil
     }
 }
+
