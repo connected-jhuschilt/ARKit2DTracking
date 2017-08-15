@@ -56,7 +56,7 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
             configuration.planeDetection = .horizontal
             configuration.worldAlignment = .gravity
             
-            sceneView.session.run(configuration)
+            sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
         } else {
             let alertVC = UIAlertController(title: "AR Not Supported", message: "This requires an iPhone 6s or newer, or an iPad Pro.", preferredStyle: .alert)
             alertVC.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
@@ -73,6 +73,13 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     // MARK: - Vision
     
     func resctangleDetector(frame: ARFrame) {
+        print("Anchor coun for Frame: \(frame.anchors.count)")
+        
+        for anchor in frame.anchors {
+            print("\t\t\(anchor)")
+        }
+        
+        
         // Only run one Vision request at a time
         if !self.processing {
             
@@ -84,6 +91,7 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
                     print("Unexpected Observation type")
                     return
                 }
+                
                 if let rectangle = observations.first {
                     var rect = rectangle.boundingBox
                     
@@ -95,10 +103,33 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
                     
                     DispatchQueue.main.async {
                         // Perform a hit test on the ARFrame to find a surface
-                        let hitTestResults = frame.hitTest(center, types: [ARHitTestResult.ResultType.existingPlane])  //featurePoint
+                        // TODO: More experiment needed with the HitTest.Result options
                         
-                        // If we have a result, process it
-                        if let hitTestResult = hitTestResults.first {
+                        // ARHitTestResult.ResultType rawValues: featurePoint: 1, estimatedHorizontalPlane: 2, existingPlane: 8, existingPlaneUsingExtent: 16
+                        
+                        let hitTestResults = frame.hitTest(center, types: [.existingPlane, .existingPlaneUsingExtent, .estimatedHorizontalPlane])
+                        
+//                            print("  hitTestResults.count: \(hitTestResults.count) \(String(describing: (hitTestResults.first?.anchor as? ARPlaneAnchor)?.extent))")
+                        
+                            for hit in hitTestResults {
+//                                print("\t\t\(hit.type)")
+//                                print("\t\t\t\(hit.distance)")
+                                print("\t\t\t\t\(String(describing: hit.anchor))")
+                            }
+                        
+                        // Cards are 0.091m x 0.079m, so we'll accept extents between 6cm - 11cm
+                        if let hitTestResult = hitTestResults.first(where: { hitTest in
+                            if let planeAnchor = hitTest.anchor as? ARPlaneAnchor,
+//                                planeAnchor.extent.x > 0.06 && planeAnchor.extent.x < 0.11,
+//                                planeAnchor.extent.z > 0.06 && planeAnchor.extent.z < 0.11
+                                planeAnchor.extent.x > 0.2 && planeAnchor.extent.x < 0.5,
+                                planeAnchor.extent.z > 0.2 && planeAnchor.extent.z < 0.5
+                            {
+                                return true
+                            }
+                            return false
+                        })
+                        {
                             
                             // If we already have an anchor, update the position of the attached node
                             if let detectedDataAnchor = self.detectedDataAnchor,
@@ -118,6 +149,10 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
                     self.processing = false
                 }
             }
+            request.maximumObservations = 1 // only want 1 card
+            // TODO: Vision minimumSize has no relative physical size, can try to use ARKit physical size
+            request.minimumSize = 0.2 // Minimum size is percent of image size
+            
             
             // Process the request in the background
             DispatchQueue.global(qos: .userInitiated).async {
@@ -133,6 +168,20 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
             }
         }
     }
+    
+//    func createRectangleTrackingRequest(for rectangleObservationList: [VNRectangleObservation]) {
+//        for rectangle in rectangleObservationList {
+//            let trackingRequest = VNTrackRectangleRequest(rectangleObservation: rectangle, completionHandler: self.updateAnchor)
+//        }
+//    }
+//
+//    func updateAnchor(request: VNRequest, error: Error?) {
+//        if error != nil {
+//
+//        } else {
+//            print("Rectangle Tracking lost.")
+//        }
+//    }
     
     
     // MARK: - ARSessionDelegate
