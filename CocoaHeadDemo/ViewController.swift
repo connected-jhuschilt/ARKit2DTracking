@@ -17,8 +17,9 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     
     @IBOutlet var sceneView: ARSCNView!
     
-    var detectedDataAnchor: ARAnchor?
-    var processing = false
+    private var rectanglesToTrack = [Rectangle]()
+    private var runningDetectRectangleRequest = false
+    
     
     // MARK: - View Setup
     
@@ -50,11 +51,8 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     
     func configureAndRunARSession() {
         // test if device is capable of running AR
-        if ARWorldTrackingConfiguration.isSupported {
-            let configuration = ARWorldTrackingConfiguration()
-            
-            configuration.planeDetection = .horizontal
-            configuration.worldAlignment = .gravity
+        if AROrientationTrackingConfiguration.isSupported {
+            let configuration = AROrientationTrackingConfiguration()
             
             sceneView.session.run(configuration)
         } else {
@@ -72,64 +70,74 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     
     // MARK: - Vision
     
-    func resctangleDetector(frame: ARFrame) {
-        // Only run one Vision request at a time
-        if !self.processing {
+    lazy var detectRectanglesRequest: VNDetectRectanglesRequest = {
+        let request = VNDetectRectanglesRequest(completionHandler: self.handleRectangleDetection)
+        
+        request.minimumSize = 0.2
+        request.maximumObservations = 1
+        
+        return request
+    }()
+    
+    // callback
+    func handleRectangleDetection(request: VNRequest, error: Error?) {
+        self.runningDetectRectangleRequest = false
+        
+        if let error = error {
+            print("Rectangle Detection Request Error: \(error.localizedDescription)")
+            return
+        }
+        
+        guard let observations = request.results as? [VNRectangleObservation] else {
+            print("Unexpected Observation type")
+            return
+        }
+        
+        // TODO: Change to for loop for multiple detections
+        if let newRectangleObservation = observations.first {
+            updateRectangle(detectedObservation: newRectangleObservation)
+        }
+    }
+    
+    func buildTrackRequest(for rectangle: VNRectangleObservation) -> VNTrackRectangleRequest {
+        return VNTrackRectangleRequest(rectangleObservation: rectangle, completionHandler: self.handleTrackRectangles)
+    }
+    
+    func updateRectangle(detectedObservation: VNRectangleObservation) {
+        print("updateRectangle  rectanglesToTrack.count: \(rectanglesToTrack.count)    center: \(detectedObservation.center)    boundingBox: \(detectedObservation.boundingBox)")
+        
+        // if this is a new rectangle, and should be tracked
+        if nil  == rectanglesToTrack.first(where: { (trackedRectangle) in
+            let centerDifference = trackedRectangle.observation.center.distance(to: detectedObservation.center)
             
-            self.processing = true
+            // TODO: Experiment with a value that is within a margin of error (find out unit measurement)
+            return centerDifference < 5
+        }) {
+            // TODO: Filter out unwanted rectangles (ie. by: size, confidence)
+            rectanglesToTrack.append(Rectangle(initialObservation: detectedObservation, trackRequest: buildTrackRequest(for: detectedObservation)))
+        }
+    }
+    
+    // callback
+    func handleTrackRectangles(request: VNRequest, error: Error?){
+        if let error = error {
+            // TODO: Remove the rectangle from the array of trackedRectangles if tracking lost forever
+            print("Track Rectangle Request Error: \(error.localizedDescription)")
+            return
+        }
+        
+        // TODO: Do something with tracking info
+        // update observations, show toast
+        
+        
+        
+        if let trackedObservation = request.results?.first as? VNRectangleObservation {
+            print("        UUID: \(String(describing: trackedObservation.uuid))")
+            print("        Center: \(String(describing: trackedObservation.center))  \(trackedObservation.boundingBox)")
             
-            // Create a Rectangle Detection Request
-            let request = VNDetectRectanglesRequest { (request, error) in
-                guard let observations = request.results as? [VNRectangleObservation] else {
-                    print("Unexpected Observation type")
-                    return
-                }
-                if let rectangle = observations.first {
-                    var rect = rectangle.boundingBox
-                    
-                    // Flip coordinates
-                    rect = rect.applying(CGAffineTransform(scaleX: 1, y: -1))
-                    rect = rect.applying(CGAffineTransform(translationX: 0, y: 1))
-                    
-                    let center = CGPoint(x: rect.midX, y: rect.midY)
-                    
-                    DispatchQueue.main.async {
-                        // Perform a hit test on the ARFrame to find a surface
-                        let hitTestResults = frame.hitTest(center, types: [ARHitTestResult.ResultType.existingPlane])  //featurePoint
-                        
-                        // If we have a result, process it
-                        if let hitTestResult = hitTestResults.first {
-                            
-                            // If we already have an anchor, update the position of the attached node
-                            if let detectedDataAnchor = self.detectedDataAnchor,
-                                let node = self.sceneView.node(for: detectedDataAnchor) {
-                                
-                                node.transform = SCNMatrix4(hitTestResult.worldTransform)
-                            } else {
-                                // Create an anchor. The node will be created in delegate methods
-                                self.detectedDataAnchor = ARAnchor(transform: hitTestResult.worldTransform)
-                                self.sceneView.session.add(anchor: self.detectedDataAnchor!)
-                            }
-                        }
-                        
-                        self.processing = false
-                    }
-                } else {
-                    self.processing = false
-                }
-            }
-            
-            // Process the request in the background
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    // Create a request handler using the captured image from the ARFrame
-                    let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage,
-                                                                    options: [:])
-                    // Process the request
-                    try imageRequestHandler.perform([request])
-                } catch {
-                    print("Error")
-                }
+            if let rectangle = rectanglesToTrack.first(where: { $0.trackRequest == request && $0.observation.uuid == trackedObservation.uuid })
+            {
+                rectangle.observation = trackedObservation
             }
         }
     }
@@ -143,36 +151,30 @@ class ViewController: UIViewController, ARSCNViewDelegate, ARSessionDelegate {
     }
     
     public func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        resctangleDetector(frame: frame)
-    }
-    
-    
-    // MARK: - ARSCNViewDelegate
-    
-    func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
-        
-        // If this is our anchor, create a node
-        if self.detectedDataAnchor?.identifier == anchor.identifier {
+        // Process the request in the background
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let strongSelf = self else { return }
             
-            // Create a 3D Cup to display
-            guard let virtualObjectScene = SCNScene(named: "cup.scn", inDirectory: "Models.scnassets/cup") else {
-                return nil
+            var requests = [VNRequest]()
+            
+            // always run tracking requests
+            requests += strongSelf.rectanglesToTrack.map({ $0.trackRequest })
+            
+            // Only run a new detect request if there aren't any currently running
+            if !strongSelf.runningDetectRectangleRequest {
+                strongSelf.runningDetectRectangleRequest = true
+                requests.append(strongSelf.detectRectanglesRequest)
             }
             
-            let wrapperNode = SCNNode()
-            
-            for child in virtualObjectScene.rootNode.childNodes {
-                child.geometry?.firstMaterial?.lightingModel = .physicallyBased
-                child.movabilityHint = .movable
-                wrapperNode.addChildNode(child)
+            do {
+                // Create a request handler using the captured image from the ARFrame
+                let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage,
+                                                                options: [:])
+                // Process the requests
+                try imageRequestHandler.perform(requests)
+            } catch {
+                print("Error starting Vision Requests: \(error.localizedDescription)")
             }
-            
-            // Set its position based off the anchor
-            wrapperNode.transform = SCNMatrix4(anchor.transform)
-            
-            return wrapperNode
         }
-        
-        return nil
     }
 }

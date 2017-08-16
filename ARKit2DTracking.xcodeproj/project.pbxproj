@@ -13,6 +13,7 @@
 		F04BCE8F1F00C80700AAFBEB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F04BCE8E1F00C80700AAFBEB /* Assets.xcassets */; };
 		F04BCE921F00C80700AAFBEB /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F04BCE901F00C80700AAFBEB /* LaunchScreen.storyboard */; };
 		F0E4CEC31F037FB400E40956 /* Models.scnassets in Resources */ = {isa = PBXBuildFile; fileRef = F0E4CEC21F037F0300E40956 /* Models.scnassets */; };
+		F3AE9D611F439255007593BA /* Rectangle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3AE9D601F439255007593BA /* Rectangle.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -24,6 +25,7 @@
 		F04BCE911F00C80700AAFBEB /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		F04BCE931F00C80700AAFBEB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		F0E4CEC21F037F0300E40956 /* Models.scnassets */ = {isa = PBXFileReference; lastKnownFileType = wrapper.scnassets; path = Models.scnassets; sourceTree = "<group>"; };
+		F3AE9D601F439255007593BA /* Rectangle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rectangle.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -56,6 +58,7 @@
 		F04BCE841F00C80700AAFBEB /* CocoaHeadDemo */ = {
 			isa = PBXGroup;
 			children = (
+				F3AE9D601F439255007593BA /* Rectangle.swift */,
 				F04BCE851F00C80700AAFBEB /* AppDelegate.swift */,
 				F04BCE891F00C80700AAFBEB /* ViewController.swift */,
 				F04BCE8B1F00C80700AAFBEB /* Main.storyboard */,
@@ -139,6 +142,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F3AE9D611F439255007593BA /* Rectangle.swift in Sources */,
 				F04BCE8A1F00C80700AAFBEB /* ViewController.swift in Sources */,
 				F04BCE861F00C80700AAFBEB /* AppDelegate.swift in Sources */,
 			);
